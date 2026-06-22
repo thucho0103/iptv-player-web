@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { Channel } from '../lib/m3u'
 
 type ChannelListProps = {
@@ -7,6 +7,10 @@ type ChannelListProps = {
   error: string | null
   activeId: string | null
   onSelect: (channel: Channel) => void
+  query: string
+  setQuery: (q: string) => void
+  group: string
+  setGroup: (g: string) => void
 }
 
 export const ChannelList = ({
@@ -15,9 +19,11 @@ export const ChannelList = ({
   error,
   activeId,
   onSelect,
+  query,
+  setQuery,
+  group,
+  setGroup,
 }: ChannelListProps) => {
-  const [query, setQuery] = useState('')
-  const [group, setGroup] = useState<string>('__all__')
 
   const groups = useMemo(() => {
     const set = new Set<string>()
