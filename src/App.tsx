@@ -259,7 +259,7 @@ const App = () => {
             onClick={goHome}
             title="Về trang chủ"
           >
-            <img src="/favicon.svg" className="topbar__logo" alt="IPTV Web Logo" />
+            <img src={`${import.meta.env.BASE_URL}favicon.svg`} className="topbar__logo" alt="IPTV Web Logo" />
           </button>
           <h1 className="topbar__title" onClick={goHome} title="Về trang chủ">
             IPTV Web

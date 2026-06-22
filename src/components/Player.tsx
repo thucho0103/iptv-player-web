@@ -22,6 +22,8 @@ export const Player = ({ channel }: PlayerProps) => {
   const videoElRef = useRef<HTMLVideoElement | null>(null)
   const playerRef = useRef<VideoJsPlayer | null>(null)
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const [isPaused, setIsPaused] = useState(true)
+  const [userActive, setUserActive] = useState(true)
 
   // Initialise video.js once on mount
   useEffect(() => {
@@ -55,8 +57,15 @@ export const Player = ({ channel }: PlayerProps) => {
 
     playerRef.current = player
 
-    player.on('playing', () => setStatus({ kind: 'playing' }))
+    player.on('playing', () => {
+      setStatus({ kind: 'playing' })
+      setIsPaused(false)
+    })
     player.on('waiting', () => setStatus({ kind: 'loading' }))
+    player.on('pause', () => setIsPaused(true))
+    player.on('play', () => setIsPaused(false))
+    player.on('useractive', () => setUserActive(true))
+    player.on('userinactive', () => setUserActive(false))
     player.on('error', () => {
       const err = player.error()
       const msg =
@@ -68,6 +77,7 @@ export const Player = ({ channel }: PlayerProps) => {
               ? 'Định dạng không được hỗ trợ.'
               : 'Không phát được luồng.'
       setStatus({ kind: 'error', message: msg })
+      setIsPaused(true)
     })
 
     return () => {
@@ -84,24 +94,32 @@ export const Player = ({ channel }: PlayerProps) => {
     if (!channel) {
       player.pause()
       player.src('')
-      setStatus({ kind: 'idle' })
+      Promise.resolve().then(() => {
+        setStatus({ kind: 'idle' })
+      })
       return
     }
 
     const url = channel.url
 
     if (isDashUrl(url)) {
-      setStatus({ kind: 'error', message: 'DASH (.mpd) chưa được hỗ trợ trong player này.' })
+      Promise.resolve().then(() => {
+        setStatus({ kind: 'error', message: 'DASH (.mpd) chưa được hỗ trợ trong player này.' })
+      })
       return
     }
 
-    setStatus({ kind: 'loading' })
+    Promise.resolve().then(() => {
+      setStatus({ kind: 'loading' })
+    })
 
     const sourceType = isHlsUrl(url) ? 'application/x-mpegURL' : 'video/mp4'
 
     player.src({ src: url, type: sourceType })
     player.play()?.catch(() => {
-      setStatus({ kind: 'error', message: 'Trình duyệt chặn autoplay. Hãy nhấn Play.' })
+      Promise.resolve().then(() => {
+        setStatus({ kind: 'error', message: 'Trình duyệt chặn autoplay. Hãy nhấn Play.' })
+      })
     })
   }, [channel])
 
@@ -114,11 +132,69 @@ export const Player = ({ channel }: PlayerProps) => {
           <p>Chọn một kênh từ danh sách bên trái để bắt đầu.</p>
         </div>
       )}
-      {channel && status.kind === 'loading' && (
-        <div className="player__status">Đang tải {channel.name}…</div>
-      )}
-      {channel && status.kind === 'error' && (
-        <div className="player__status player__status--error">{status.message}</div>
+
+      {channel && (
+        <div
+          className={`player__overlay ${userActive ? 'player__overlay--active' : 'player__overlay--inactive'} ${
+            isPaused ? 'player__overlay--paused' : 'player__overlay--playing'
+          }`}
+        >
+          {status.kind === 'loading' && (
+            <div className="player__loading-spinner">
+              <div className="spinner-ring" />
+            </div>
+          )}
+
+          {status.kind === 'error' && (
+            <div className="player__overlay-status player__overlay-status--error">
+              <p>{status.message}</p>
+              <button
+                className="player__retry-btn"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  const player = playerRef.current
+                  if (player && channel) {
+                    const sourceType = isHlsUrl(channel.url) ? 'application/x-mpegURL' : 'video/mp4'
+                    player.src({ src: channel.url, type: sourceType })
+                    player.play()?.catch(() => {})
+                  }
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '6px' }}>
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                Thử lại
+              </button>
+            </div>
+          )}
+
+          {status.kind !== 'loading' && status.kind !== 'error' && (
+            <button
+              className="player__center-play"
+              onClick={(e) => {
+                e.stopPropagation()
+                const player = playerRef.current
+                if (!player) return
+                if (player.paused()) {
+                  player.play()?.catch(() => {})
+                } else {
+                  player.pause()
+                }
+              }}
+              aria-label={isPaused ? 'Phát video' : 'Tạm dừng video'}
+            >
+              {isPaused ? (
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
       )}
     </div>
   )
