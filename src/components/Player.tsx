@@ -43,6 +43,7 @@ export const Player = ({ channel }: PlayerProps) => {
       fluid: false,
       fill: true,
       playsinline: true,
+      preferFullWindow: true,
       html5: {
         vhs: {
           overrideNative: true,
