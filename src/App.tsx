@@ -50,7 +50,6 @@ const App = () => {
   const pendingChannelNameRef = useRef<string | null>(null)
   const activeRef = useRef<Channel | null>(null)
   const lastProcessedHashRef = useRef<string | null>(null)
-  const isFirstLoadRef = useRef(true)
 
   // Keep activeRef in sync
   useEffect(() => {
@@ -157,7 +156,25 @@ const App = () => {
     }
   }, [source.id, active, group, query])
 
-  // Synchronize URL hash back to React state
+  // 1. Initial URL load on mount
+  useEffect(() => {
+    const initialHash = window.location.hash
+    if (!initialHash.startsWith('#/')) {
+      const nextSource = PLAYLIST_SOURCES.find((s) => s.id === DEFAULT_SOURCE_ID) || PLAYLIST_SOURCES[0]
+      load(nextSource)
+    } else {
+      const { sourceId, channelName, group: nextGroup, search: nextSearch } = parseHash()
+      const nextSourceId = sourceId || DEFAULT_SOURCE_ID
+      const nextSource = PLAYLIST_SOURCES.find((s) => s.id === nextSourceId) || PLAYLIST_SOURCES[0]
+
+      pendingChannelNameRef.current = channelName
+      load(nextSource)
+      setGroup(nextGroup)
+      setQuery(nextSearch)
+    }
+  }, [load])
+
+  // 2. Synchronize URL hash back to React state on hash change
   useEffect(() => {
     const handleHashChange = () => {
       const currentHash = window.location.hash
@@ -169,8 +186,7 @@ const App = () => {
       const nextSourceId = sourceId || DEFAULT_SOURCE_ID
       const nextSource = PLAYLIST_SOURCES.find((s) => s.id === nextSourceId) || PLAYLIST_SOURCES[0]
 
-      if (nextSource.id !== source.id || isFirstLoadRef.current) {
-        isFirstLoadRef.current = false
+      if (nextSource.id !== source.id) {
         pendingChannelNameRef.current = channelName
         load(nextSource)
       } else {
@@ -196,19 +212,9 @@ const App = () => {
       setQuery(nextSearch)
     }
 
-    const initialHash = window.location.hash
-    if (!initialHash.startsWith('#/')) {
-      const nextSource = PLAYLIST_SOURCES.find((s) => s.id === DEFAULT_SOURCE_ID) || PLAYLIST_SOURCES[0]
-      load(nextSource)
-      isFirstLoadRef.current = false
-    } else {
-      handleHashChange()
-    }
-
     window.addEventListener('hashchange', handleHashChange)
     return () => {
       window.removeEventListener('hashchange', handleHashChange)
-      abortRef.current?.abort()
     }
   }, [source.id, channels, loading, load])
 
