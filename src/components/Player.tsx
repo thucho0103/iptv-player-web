@@ -168,33 +168,6 @@ export const Player = ({ channel }: PlayerProps) => {
               </button>
             </div>
           )}
-
-          {status.kind !== 'loading' && status.kind !== 'error' && (
-            <button
-              className="player__center-play"
-              onClick={(e) => {
-                e.stopPropagation()
-                const player = playerRef.current
-                if (!player) return
-                if (player.paused()) {
-                  player.play()?.catch(() => {})
-                } else {
-                  player.pause()
-                }
-              }}
-              aria-label={isPaused ? 'Phát video' : 'Tạm dừng video'}
-            >
-              {isPaused ? (
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor">
-                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                </svg>
-              )}
-            </button>
-          )}
         </div>
       )}
     </div>
