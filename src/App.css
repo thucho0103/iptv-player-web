@@ -864,3 +864,8 @@
   font-size: 12px;
   text-align: center;
 }
+
+/* Custom override for videojs react controls to fill full width of the video player */
+.player .media-controls {
+  max-width: none !important;
+}
