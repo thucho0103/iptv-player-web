@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 import './App.css'
 import { ChannelList } from './components/ChannelList'
 import { Player } from './components/Player'
-import { SourcePicker } from './components/SourcePicker'
-import { parseM3U, type Channel } from './lib/m3u'
+
+import { parseM3U, getStreamLabel, enrichChannelsWithStreams, type Channel, type ApiStream, type Stream } from './lib/m3u'
 import { PLAYLIST_SOURCES, type PlaylistSource } from './lib/playlists'
-import { fetchPlaylist, loadCached } from './lib/storage'
+import { fetchPlaylist, loadCached, clearCachedPlaylists } from './lib/storage'
 
 const DEFAULT_SOURCE_ID = 'vn'
 
@@ -38,13 +38,45 @@ const App = () => {
     PLAYLIST_SOURCES.find((s) => s.id === DEFAULT_SOURCE_ID) ?? PLAYLIST_SOURCES[0],
   )
   const [channels, setChannels] = useState<Channel[]>([])
+  const [apiStreams, setApiStreams] = useState<ApiStream[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [active, setActive] = useState<Channel | null>(null)
+  const [activeStreamIndex, setActiveStreamIndex] = useState(0)
   const [isCached, setIsCached] = useState(false)
+  const [clearing, setClearing] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [query, setQuery] = useState('')
   const [group, setGroup] = useState<string>('__all__')
+
+  // Fetch streams list in background to enrich channels with alternative streams
+  useEffect(() => {
+    fetch('https://iptv-org.github.io/api/streams.json')
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        setApiStreams(data)
+      })
+      .catch((err) => {
+        console.error('Không tải được danh sách stream từ API:', err)
+      })
+  }, [])
+
+  // Reset active stream index to 0 when active channel changes
+  useEffect(() => {
+    setActiveStreamIndex(0)
+  }, [active?.id])
+
+  const enrichedChannels = useMemo<Channel[]>(() => {
+    return enrichChannelsWithStreams(channels, apiStreams)
+  }, [channels, apiStreams])
+
+  const activeEnriched = useMemo<Channel | null>(() => {
+    if (!active) return null
+    return enrichedChannels.find((c: Channel) => c.id === active.id) || active
+  }, [active, enrichedChannels])
 
   const abortRef = useRef<AbortController | null>(null)
   const pendingChannelNameRef = useRef<string | null>(null)
@@ -191,8 +223,8 @@ const App = () => {
         load(nextSource)
       } else {
         if (channelName) {
-          const found = channels.find(
-            (c) => slugify(c.name).toLowerCase() === channelName.toLowerCase(),
+          const found = enrichedChannels.find(
+            (c: Channel) => slugify(c.name).toLowerCase() === channelName.toLowerCase(),
           )
           if (found) {
             setActive(found)
@@ -220,13 +252,6 @@ const App = () => {
 
   const onSelect = (channel: Channel) => setActive(channel)
 
-  const onSourceChange = (next: PlaylistSource) => {
-    // Reset filters when switching sources manually
-    setQuery('')
-    setGroup('__all__')
-    window.location.hash = `#/${next.id}`
-  }
-
   const goHome = () => {
     window.location.hash = ''
     if (!window.location.hash) {
@@ -234,6 +259,14 @@ const App = () => {
       setGroup('__all__')
       setActive(null)
     }
+  }
+
+  const handleClearCache = () => {
+    clearCachedPlaylists()
+    setIsCached(false)
+    setClearing(true)
+    setTimeout(() => setClearing(false), 2000)
+    load(source)
   }
 
   return (
@@ -269,7 +302,20 @@ const App = () => {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <SourcePicker activeId={source.id} onChange={onSourceChange} />
+
+          <button
+            type="button"
+            className={`topbar__clear-cache-btn ${clearing ? 'topbar__clear-cache-btn--success' : ''}`}
+            onClick={handleClearCache}
+            title="Xóa cache danh sách kênh và tải lại"
+          >
+            <span className="topbar__clear-cache-text">
+              {clearing ? '✔️ Đã xóa' : '🗑️ Xóa cache'}
+            </span>
+            <span className="topbar__clear-cache-icon">
+              {clearing ? '✔️' : '🗑️'}
+            </span>
+          </button>
           <button
             type="button"
             className="topbar__home-btn"
@@ -284,10 +330,10 @@ const App = () => {
 
       <main className={`layout ${sidebarOpen ? '' : 'layout--sidebar-collapsed'} ${active ? 'layout--has-active' : ''}`}>
         <ChannelList
-          channels={channels}
+          channels={enrichedChannels}
           loading={loading}
           error={error}
-          activeId={active?.id ?? null}
+          activeId={activeEnriched?.id ?? null}
           onSelect={onSelect}
           query={query}
           setQuery={setQuery}
@@ -295,15 +341,32 @@ const App = () => {
           setGroup={setGroup}
         />
         <section className="stage">
-          <Player channel={active} />
-          {active && (
+          <Player channel={activeEnriched} activeStreamIndex={activeStreamIndex} />
+          {activeEnriched && (
             <div className="stage__info">
-              <h2 className="stage__title">{active.name}</h2>
+              <h2 className="stage__title">{activeEnriched.name}</h2>
+              {activeEnriched.streams.length > 1 && (
+                <div className="stage__streams">
+                  <span className="stage__streams-label">Đường truyền:</span>
+                  <div className="stage__streams-list">
+                    {activeEnriched.streams.map((stream: Stream, idx: number) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className={`stage__stream-btn ${idx === activeStreamIndex ? 'stage__stream-btn--active' : ''}`}
+                        onClick={() => setActiveStreamIndex(idx)}
+                      >
+                        {getStreamLabel(stream.name, activeEnriched.name, idx)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="stage__meta">
-                {active.groups.length > 0 && (
-                  <span className="stage__chip">{active.groups.join(' · ')}</span>
+                {activeEnriched.groups.length > 0 && (
+                  <span className="stage__chip">{activeEnriched.groups.join(' · ')}</span>
                 )}
-                {active.tvgId && <span className="stage__chip">tvg-id: {active.tvgId}</span>}
+                {activeEnriched.tvgId && <span className="stage__chip">tvg-id: {activeEnriched.tvgId}</span>}
                 {isCached && <span className="stage__chip stage__chip--ok">cached</span>}
               </div>
             </div>
